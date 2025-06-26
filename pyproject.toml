@@ -1,0 +1,19 @@
+[project]
+name = "multiagent-system"
+version = "0.1.0"
+description = "A multi-agent system using Strands Agents framework"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "strands-agents>=0.1.0",
+    "strands-agents-tools>=0.1.0",
+    "click>=8.0.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+multiagent = "multiagent_system.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
