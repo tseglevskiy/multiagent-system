@@ -41,10 +41,10 @@ def status():
 
 
 @cli.command()
-@click.option('--provider', default='bedrock', help='LLM provider (bedrock, openai, etc.)')
-@click.option('--model', default='anthropic.claude-3-sonnet-20240229-v1:0', help='Model ID to use')
+@click.option('--provider', default='openai', help='LLM provider (openai, bedrock, anthropic, ollama)')
+@click.option('--model', default='gpt-4', help='Model ID to use')
 @click.option('--auto', is_flag=True, help='Play full game automatically')
-def play():
+def play(provider, model, auto):
     """Start the word guessing game with three LLM agents."""
     try:
         from .game_controller import WordGuessingGame
@@ -55,6 +55,8 @@ def play():
             title="🤖 Multi-Agent Game",
             border_style="cyan"
         ))
+        
+        console.print(f"[yellow]Using {provider} with model: {model}[/yellow]")
         
         # Initialize game with loading spinner
         with Progress(
@@ -73,6 +75,13 @@ def play():
                 time.sleep(1)
             except Exception as e:
                 console.print(f"[red]❌ Error initializing game: {e}[/red]")
+                console.print(f"[yellow]💡 Make sure you have set your API key in environment variables[/yellow]")
+                if provider == "openai":
+                    console.print(f"[dim]   Set OPENAI_API_KEY environment variable[/dim]")
+                elif provider == "anthropic":
+                    console.print(f"[dim]   Set ANTHROPIC_API_KEY environment variable[/dim]")
+                elif provider == "bedrock":
+                    console.print(f"[dim]   Configure AWS credentials[/dim]")
                 return
         
         if auto:
@@ -165,6 +174,52 @@ def agents():
     )
     
     console.print(table)
+
+
+@cli.command()
+def providers():
+    """Show supported LLM providers and setup instructions."""
+    table = Table(title="🔧 Supported LLM Providers")
+    table.add_column("Provider", style="cyan", no_wrap=True)
+    table.add_column("Environment Variable", style="yellow")
+    table.add_column("Example Model", style="green")
+    table.add_column("Setup Instructions")
+    
+    table.add_row(
+        "OpenAI",
+        "OPENAI_API_KEY",
+        "gpt-4, gpt-3.5-turbo",
+        "Get API key from https://platform.openai.com/api-keys"
+    )
+    table.add_row(
+        "Anthropic",
+        "ANTHROPIC_API_KEY", 
+        "claude-3-sonnet-20240229",
+        "Get API key from https://console.anthropic.com/"
+    )
+    table.add_row(
+        "AWS Bedrock",
+        "AWS credentials",
+        "anthropic.claude-3-sonnet-*",
+        "Configure AWS CLI or set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY"
+    )
+    table.add_row(
+        "Ollama",
+        "None (local)",
+        "llama3, mistral",
+        "Install Ollama locally and run 'ollama serve'"
+    )
+    
+    console.print(table)
+    
+    console.print("\n[bold]Quick Setup Examples:[/bold]")
+    console.print("[cyan]# For OpenAI[/cyan]")
+    console.print("export OPENAI_API_KEY='your-api-key-here'")
+    console.print("uv run multiagent play --provider openai --model gpt-4")
+    
+    console.print("\n[cyan]# For Anthropic[/cyan]")
+    console.print("export ANTHROPIC_API_KEY='your-api-key-here'")
+    console.print("uv run multiagent play --provider anthropic --model claude-3-sonnet-20240229")
 
 
 if __name__ == "__main__":

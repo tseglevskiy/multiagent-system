@@ -8,21 +8,42 @@ This module coordinates the interaction between:
 """
 
 import asyncio
+import os
 from typing import Dict, Any, Optional
+from dotenv import load_dotenv
 from strands.models import BedrockModel
+
+# Conditional imports for different providers
+try:
+    from strands.models.openai import OpenAIModel
+except ImportError:
+    OpenAIModel = None
+
+try:
+    from strands.models.anthropic import AnthropicModel
+except ImportError:
+    AnthropicModel = None
+
+try:
+    from strands.models.ollama import OllamaModel
+except ImportError:
+    OllamaModel = None
 from .agents.main_agent import MainAgent
 from .agents.thinking_agent import ThinkingAgent
 from .agents.guessing_agent import GuessingAgent
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class WordGuessingGame:
     """Coordinates the word guessing game between three LLM agents."""
     
-    def __init__(self, model_provider: str = "bedrock", model_config: Dict[str, Any] = None):
+    def __init__(self, model_provider: str = "openai", model_config: Dict[str, Any] = None):
         """Initialize the game with three agents.
         
         Args:
-            model_provider: LLM provider to use (bedrock, openai, etc.)
+            model_provider: LLM provider to use (openai, bedrock, anthropic, ollama)
             model_config: Configuration for the LLM model
         """
         self.model_config = model_config or {}
@@ -38,13 +59,53 @@ class WordGuessingGame:
     
     def _create_model(self, provider: str):
         """Create the appropriate model based on provider."""
-        if provider == "bedrock":
+        if provider == "openai":
+            if OpenAIModel is None:
+                raise ValueError("OpenAI support not available. Install with: pip install openai")
+            
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable is required for OpenAI provider")
+            
+            return OpenAIModel(
+                model_id=self.model_config.get("model_id", "gpt-4"),
+                temperature=self.model_config.get("temperature", 0.7),
+                max_tokens=self.model_config.get("max_tokens", 1000),
+                api_key=api_key
+            )
+        
+        elif provider == "anthropic":
+            if AnthropicModel is None:
+                raise ValueError("Anthropic support not available. Install with: pip install anthropic")
+            
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY environment variable is required for Anthropic provider")
+            
+            return AnthropicModel(
+                model_id=self.model_config.get("model_id", "claude-3-sonnet-20240229"),
+                temperature=self.model_config.get("temperature", 0.7),
+                max_tokens=self.model_config.get("max_tokens", 1000),
+                api_key=api_key
+            )
+        
+        elif provider == "bedrock":
             return BedrockModel(
                 model_id=self.model_config.get("model_id", "anthropic.claude-3-sonnet-20240229-v1:0"),
                 temperature=self.model_config.get("temperature", 0.7),
                 max_tokens=self.model_config.get("max_tokens", 1000)
             )
-        # Add other providers as needed
+        
+        elif provider == "ollama":
+            if OllamaModel is None:
+                raise ValueError("Ollama support not available. Install Ollama locally")
+            
+            return OllamaModel(
+                host=self.model_config.get("host", "http://localhost:11434"),
+                model_id=self.model_config.get("model_id", "llama3"),
+                temperature=self.model_config.get("temperature", 0.7)
+            )
+        
         else:
             raise ValueError(f"Unsupported model provider: {provider}")
     
@@ -88,10 +149,11 @@ class WordGuessingGame:
         print(f"📢 Main Agent Relay: {main_relay}")
         
         # 3. Determine if it's a question or guess and get thinking agent's response
-        if "QUESTION" in guessing_decision.upper() or "?" in guessing_decision:
+        guessing_text = str(guessing_decision)  # Convert to string
+        if "QUESTION" in guessing_text.upper() or "?" in guessing_text:
             # It's a question - get thinking agent's answer
             thinking_response = self.thinking_agent.process_request(
-                f"Answer this question about your secret word with only 'yes', 'no', or 'not applicable': {guessing_decision}"
+                f"Answer this question about your secret word with only 'yes', 'no', or 'not applicable': {guessing_text}"
             )
             print(f"🤔 Thinking Agent Answer: {thinking_response}")
             
@@ -101,15 +163,15 @@ class WordGuessingGame:
             
             return {
                 "type": "question",
-                "guessing_agent": guessing_decision,
-                "thinking_agent": thinking_response,
-                "main_agent": main_feedback
+                "guessing_agent": guessing_text,
+                "thinking_agent": str(thinking_response),
+                "main_agent": str(main_feedback)
             }
         
-        elif "GUESS" in guessing_decision.upper() or "is it" in guessing_decision.lower():
+        elif "GUESS" in guessing_text.upper() or "is it" in guessing_text.lower():
             # It's a guess - get thinking agent's confirmation
             thinking_response = self.thinking_agent.process_request(
-                f"Someone is guessing your secret word. Respond with 'correct' if they guessed it exactly right, or 'incorrect' if wrong: {guessing_decision}"
+                f"Someone is guessing your secret word. Respond with 'correct' if they guessed it exactly right, or 'incorrect' if wrong: {guessing_text}"
             )
             print(f"🤔 Thinking Agent Result: {thinking_response}")
             
@@ -118,18 +180,20 @@ class WordGuessingGame:
             print(f"📢 Main Agent Feedback: {main_feedback}")
             
             # Check if game ended
-            if "correct" in thinking_response.lower():
+            thinking_text = str(thinking_response)  # Convert to string
+            main_feedback_text = str(main_feedback)  # Convert to string
+            if "correct" in thinking_text.lower():
                 self.game_active = False
                 print("🎉 GAME WON!")
-            elif "GAME OVER" in main_feedback or "maximum attempts" in main_feedback.lower():
+            elif "GAME OVER" in main_feedback_text or "maximum attempts" in main_feedback_text.lower():
                 self.game_active = False
                 print("😞 GAME LOST!")
             
             return {
                 "type": "guess",
-                "guessing_agent": guessing_decision,
-                "thinking_agent": thinking_response,
-                "main_agent": main_feedback,
+                "guessing_agent": guessing_text,
+                "thinking_agent": thinking_text,
+                "main_agent": main_feedback_text,
                 "game_ended": not self.game_active
             }
         
@@ -140,7 +204,7 @@ class WordGuessingGame:
             )
             return {
                 "type": "clarification",
-                "guessing_agent": clarification
+                "guessing_agent": str(clarification)
             }
     
     def play_full_game(self, max_turns: int = 20) -> Dict[str, Any]:
